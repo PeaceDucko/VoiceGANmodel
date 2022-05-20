@@ -1,7 +1,6 @@
 ## New Model Run Script Date: Oct 8th
 ## Author: Yang Gao
 
-import time
 import os
 import fnmatch
 import argparse
@@ -20,21 +19,19 @@ from progressbar import ETA, Bar, Percentage, ProgressBar
 import pdb
 import librosa
 from sklearn import preprocessing
-import torch.backends.cudnn as cudnn
-# cudnn.benchmark = True
-# cudnn.fastest = True
+
 
 parser = argparse.ArgumentParser(description='PyTorch implementation of DiscoGAN')
 parser.add_argument('--num_gpu', type=int, default=1) ## add num_gpu
 parser.add_argument('--delta', type=str, default='true', help='Set to use or not use delta feature')
 parser.add_argument('--cuda', type=str, default='true', help='Set cuda usage')
 parser.add_argument('--task_name', type=str, default='spectrogram', help='Set data name')
-parser.add_argument('--epoch_size', type=int, default=2000, help='Set epoch size')
+parser.add_argument('--epoch_size', type=int, default=5, help='Set epoch size')
 parser.add_argument('--batch_size', type=int, default=8, help='Set batch size')
 parser.add_argument('--learning_rate', type=float, default=0.0002, help='Set learning rate for optimizer')
 parser.add_argument('--result_path', type=str, default='./results/', help='Set the path the result images will be saved.')
 parser.add_argument('--model_path', type=str, default='./models/', help='Set the path for trained models')
-parser.add_argument('--model_arch', type=str, default='spec_gan', help='choose among gan/recongan/discogan/spec_gan. gan - standard GAN, recongan - GAN with reconstruction, discogan - DiscoGAN, spec_gan - My modified GAN model for speech.')
+parser.add_argument('--model_arch', type=str, default='spec_gan_n', help='choose among gan/recongan/discogan/spec_gan. gan - standard GAN, recongan - GAN with reconstruction, discogan - DiscoGAN, spec_gan - My modified GAN model for speech.')
 parser.add_argument('--image_size', type=int, default=256, help='Image size. 64 for every experiment in the paper')
 
 parser.add_argument('--gan_curriculum', type=int, default=1000, help='Strong GAN loss for certain period at the beginning')
@@ -46,7 +43,7 @@ parser.add_argument('--n_test', type=int, default=20, help='Number of test data.
 parser.add_argument('--update_interval', type=int, default=10, help='') # origin 3
 
 parser.add_argument('--log_interval', type=int, default=10, help='Print loss values every log_interval iterations.')
-parser.add_argument('--image_save_interval', type=int, default=2000, help='Save test results every image_save_interval iterations.')
+parser.add_argument('--image_save_interval', type=int, default=3000, help='Save test results every image_save_interval iterations.')
 parser.add_argument('--model_save_interval', type=int, default=10000, help='Save models every model_save_interval iterations.')
 
 def as_np(data):
@@ -55,40 +52,33 @@ def as_np(data):
 def get_data():
     if args.task_name == 'spectrogram':
        data_A = []
-       directory = '/home/yang/DiscoGAN/datasets/spectrogram/boy/train'
-       # directory = '/home/yang/DiscoGAN/datasets/spectrogram/p236/train'
+       directory = '/home/yang/DiscoGAN/datasets/spectrogram/man/train'
        for root, dirnames, filenames in os.walk(directory):
            for filename in fnmatch.filter(filenames, '*.npy'):
                # files.append(os.path.join(root, filename))
-               data_A.append('./datasets/spectrogram/boy/train/'+filename) 
-               # data_A.append('./datasets/spectrogram/p236/train/'+filename)
+               data_A.append('./datasets/spectrogram/man/train/'+filename) 
          
        test_A = []
-       directory = '/home/yang/DiscoGAN/datasets/spectrogram/boy/val'
-       # directory = '/home/yang/DiscoGAN/datasets/spectrogram/p236/val'
+       directory = '/home/yang/DiscoGAN/datasets/spectrogram/man/val'
        for root, dirnames, filenames in os.walk(directory):
            for filename in fnmatch.filter(filenames, '*.npy'):
                # files.append(os.path.join(root, filename))
-               test_A.append('./datasets/spectrogram/boy/val/'+filename)
-               # test_A.append('./datasets/spectrogram/p236/val/'+filename)         
+               test_A.append('./datasets/spectrogram/man/val/'+filename)
+         
  
        data_B = []
-       directory = '/home/yang/DiscoGAN/datasets/spectrogram/girl/train'
-       # directory = '/home/yang/DiscoGAN/datasets/spectrogram/p239/train'
+       directory = '/home/yang/DiscoGAN/datasets/spectrogram/woman/train'
        for root, dirnames, filenames in os.walk(directory):
            for filename in fnmatch.filter(filenames, '*.npy'):
                # files.append(os.path.join(root, filename))
-               data_B.append('./datasets/spectrogram/girl/train/'+filename)
-               # data_B.append('./datasets/spectrogram/p239/train/'+filename) 
-
+               data_B.append('./datasets/spectrogram/woman/train/'+filename)
+ 
        test_B = []
-       directory = '/home/yang/DiscoGAN/datasets/spectrogram/girl/val'
-       # directory = '/home/yang/DiscoGAN/datasets/spectrogram/p239/val'
+       directory = '/home/yang/DiscoGAN/datasets/spectrogram/woman/val'
        for root, dirnames, filenames in os.walk(directory):
            for filename in fnmatch.filter(filenames, '*.npy'):
                # files.append(os.path.join(root, filename))
-               test_B.append('./datasets/spectrogram/girl/val/'+filename)
-               # test_B.append('./datasets/spectrogram/p239/val/'+filename)
+               test_B.append('./datasets/spectrogram/woman/val/'+filename)
 
     return data_A, data_B, test_A, test_B
 
@@ -174,8 +164,7 @@ def delta_regu(input_v, batch_size, criterion=nn.MSELoss()):
         # input_temp = np.mean(input_temp.cpu().numpy(), axis = 0)
         input_temp = input_temp.cpu().numpy()
         input_delta = np.absolute(librosa.feature.delta(input_temp))
-        b=input_delta.shape[1]
-        delta_loss = criterion(Variable((torch.from_numpy(input_delta)).type(torch.DoubleTensor)), Variable((torch.zeros([256,b])).type(torch.DoubleTensor)))
+        delta_loss = criterion(Variable((torch.from_numpy(input_delta)).type(torch.DoubleTensor)), Variable((torch.zeros([256,256])).type(torch.DoubleTensor)))
         # delta_loss = criterion((torch.from_numpy(input_delta)), Variable((torch.zeros([256,256]))))
         losses += delta_loss
 
@@ -276,19 +265,10 @@ def main():
     optim_stl = optim.Adam( stl_params, lr=args.learning_rate, betas=(0.5,0.999), weight_decay=0.00001)
 
     iters = 0
-    start = time.time()    
 
     log_gen_loss = []
     log_dis_loss = []
     log_stl_loss = []
-    log_delta_A = []
-    log_delta_B = []
-    log_fm_loss_A = []
-    log_fm_loss_B = []
-    log_recon_loss_A = []
-    log_recon_loss_B = [] 
-    log_gen_loss_A = []
-    log_gen_loss_B = []
 
     for epoch in range(epoch_size):
         data_style_A, data_style_B = shuffle_data( data_style_A, data_style_B)
@@ -342,8 +322,6 @@ def main():
               
 
             # Target recon with input
-
-            # pdb.set_trace()
             recon_loss_BA = recon_criterion( BA, B)
             recon_loss_AB = recon_criterion( AB, A)
             recon_loss_ABA = recon_criterion( ABA, A)
@@ -352,7 +330,7 @@ def main():
 #            recon_loss_A = 0.3*recon_loss_BA + 0.7*recon_loss_ABA
 #            recon_loss_B = 0.3*recon_loss_AB + 0.7*recon_loss_BAB
 
-            ### Should make it target same ### was 30/70 for s digits
+            ### Should make it target same ###
 	    recon_loss_A = 30 *recon_loss_AB + 70 *recon_loss_ABA
 	    recon_loss_B = 30 *recon_loss_BA + 70 *recon_loss_BAB 
 
@@ -388,8 +366,8 @@ def main():
             stl_loss = get_stl_loss(A_stl, BA_stl, ABA_stl, B_stl, AB_stl, BAB_stl, stl_criterion, cuda)
 
             # Delta regularizer
-            # log_delta_A = []
-            # log_delta_B = []
+            log_delta_A = []
+            log_delta_B = []
             BA_delta = delta_regu(BA, batch_size)
             AB_delta = delta_regu(AB, batch_size)
             ABA_delta = delta_regu(ABA, batch_size)
@@ -412,7 +390,7 @@ def main():
             if args.model_arch == 'discogan':
                 gen_loss = gen_loss_A_total + gen_loss_B_total
                 dis_loss = dis_loss_A + dis_loss_B
-            elif args.model_arch == 'spec_gan':
+            elif args.model_arch == 'spec_gan_n':
                 gen_loss = gen_loss_A_total + gen_loss_B_total
                 dis_loss = dis_loss_A + dis_loss_B + stl_loss
             elif args.model_arch == 'recongan':
@@ -437,21 +415,13 @@ def main():
                 print "RECON Loss:", as_np(recon_loss_A.mean()), as_np(recon_loss_B.mean())
                 print "DIS Loss:", as_np(dis_loss_A.mean()), as_np(dis_loss_B.mean())
                 print "Style Loss:", as_np(stl_loss.mean())
-	            print "Delta Loss:", as_np(delta_A.mean()), as_np(delta_B.mean())
-                print "Time", (time.time()-start)
-                start = time.time()     
+	        print "Delta Loss:", as_np(delta_A.mean()), as_np(delta_B.mean())
 
                 log_gen_loss = np.concatenate([log_gen_loss, as_np(gen_loss.mean())]) 
                 log_dis_loss = np.concatenate([log_dis_loss, as_np(dis_loss.mean())])
                 log_stl_loss = np.concatenate([log_stl_loss, as_np(stl_loss.mean())])
                 log_delta_A = np.concatenate([log_delta_A, as_np(delta_A.mean())])
                 log_delta_B = np.concatenate([log_delta_B, as_np(delta_B.mean())])    
-                log_fm_loss_A = np.concatenate([log_fm_loss_A, as_np(fm_loss_A.mean())])
-                log_recon_loss_A = np.concatenate([log_recon_loss_A, as_np(recon_loss_A.mean())])
-                log_fm_loss_B = np.concatenate([log_fm_loss_B, as_np(fm_loss_B.mean())])
-                log_recon_loss_B = np.concatenate([log_recon_loss_B, as_np(recon_loss_B.mean())])
-                log_gen_loss_A = np.concatenate([log_gen_loss_A, as_np(gen_loss_A.mean())])
-                log_gen_loss_B = np.concatenate([log_gen_loss_B, as_np(gen_loss_B.mean())])
 
             if iters % args.image_save_interval == 0:
                 # save test
@@ -528,17 +498,13 @@ def main():
 
             iters += 1
 
+
     sio.savemat('log_gen_loss.mat', {'log_gen_loss':log_gen_loss})
     sio.savemat('log_dis_loss.mat', {'log_dis_loss':log_dis_loss})
     sio.savemat('log_stl_loss.mat', {'log_stl_loss':log_stl_loss})
     sio.savemat('log_delta_A.mat', {'log_delta_A':log_delta_A})
     sio.savemat('log_delta_B.mat', {'log_delta_B':log_delta_B})
-    sio.savemat('log_gen_loss_A.mat', {'log_gen_loss_A':log_gen_loss_A})
-    sio.savemat('log_gen_loss_B.mat', {'log_gen_loss_B':log_gen_loss_B})
-    sio.savemat('log_fm_loss_A.mat', {'log_fm_loss_A':log_fm_loss_A}) 
-    sio.savemat('log_fm_loss_B.mat', {'log_fm_loss_B':log_fm_loss_B})
-    sio.savemat('log_recon_loss_A.mat', {'log_recon_loss_A':log_recon_loss_A}) 
-    sio.savemat('log_recon_loss_B.mat', {'log_recon_loss_B':log_recon_loss_B})
+
 
 if __name__=="__main__":
     main()
