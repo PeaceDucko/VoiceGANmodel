@@ -1,0 +1,6 @@
+data/*
+results/*
+models/*
+env/*
+logs/*
+.ipynb_checkpoints/*

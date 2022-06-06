@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch.autograd import Variable
-import ipdb
+# import ipdb
 
 import numpy as np
 
@@ -92,8 +92,8 @@ class Discriminator(nn.Module):
 
     def forward(self, input):
         return self.main( input )
- 
-# Varied Input Generator
+
+## Varied Input Generator
 class Generator(nn.Module):
     def __init__(
             self,
@@ -103,26 +103,26 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.num_gpu = num_gpu
                
- 	# Input 256X256 (DEFAULT) to 128x128
+        # Input 256X256 (DEFAULT) to 128x128
         self.conv1 = nn.Conv2d(1, 64, 4, 2, 1, bias=False)
         self.relu1 = nn.LeakyReLU(0.2, inplace=True)
 
-	# 128x128 to 64x64
+        # 128x128 to 64x64
         self.conv2 = nn.Conv2d(64, 64 * 2, 4, 2, 1, bias=False)
         self.bn2 = nn.BatchNorm2d(64 * 2)
         self.relu2 = nn.LeakyReLU(0.2, inplace=True)
 
-	# 64x64 to 32x32
+        # 64x64 to 32x32
         self.conv3 = nn.Conv2d(64 * 2, 64 * 4, 4, 2, 1, bias=False)
         self.bn3 = nn.BatchNorm2d(64 * 4)
         self.relu3 = nn.LeakyReLU(0.2, inplace=True)
 
-	# 32x32 to 16x16
+        # 32x32 to 16x16
         self.conv4 = nn.Conv2d(64 * 4, 64 * 8, 4, 2, 1, bias=False)
         self.bn4 = nn.BatchNorm2d(64 * 8)
         self.relu4 = nn.LeakyReLU(0.2, inplace=True)
 
-	# 16x16 to 8x8
+        # 16x16 to 8x8
         self.conv5 = nn.Conv2d(64 * 8, 64 * 8, 4, 2, 1, bias=False)
         self.bn5 = nn.BatchNorm2d(64 * 8)
         self.relu5 = nn.LeakyReLU(0.2, inplace=True)
@@ -136,30 +136,30 @@ class Generator(nn.Module):
         # 4x4 to 8x8
         self.tconv6 = nn.ConvTranspose2d(64 * 8, 64 * 8, 4, 2, 1, bias=False) 
         self.tbn6 = nn.BatchNorm2d(64 * 8) 
-	self.trelu6 = nn.ReLU(True) 
- 
+        self.trelu6 = nn.ReLU(True) 
+
         # 8x8 to 16x16
-	self.tconv5 = nn.ConvTranspose2d(64 * 8, 64 * 8, 4, 2, 1, bias=False) 
-	self.tbn5 = nn.BatchNorm2d(64 * 8) 
-	self.trelu5 = nn.ReLU(True) 
+        self.tconv5 = nn.ConvTranspose2d(64 * 8, 64 * 8, 4, 2, 1, bias=False) 
+        self.tbn5 = nn.BatchNorm2d(64 * 8) 
+        self.trelu5 = nn.ReLU(True) 
 
         # 16x16 to 32x32
-	self.tconv4 = nn.ConvTranspose2d(64 * 8, 64 * 4, 4, 2, 1, bias=False) 
-	self.tbn4 = nn.BatchNorm2d(64 * 4) 
-	self.trelu4 = nn.ReLU(True) 
+        self.tconv4 = nn.ConvTranspose2d(64 * 8, 64 * 4, 4, 2, 1, bias=False) 
+        self.tbn4 = nn.BatchNorm2d(64 * 4) 
+        self.trelu4 = nn.ReLU(True) 
 
         # 32x32 to 64X64
-	self.tconv3 = nn.ConvTranspose2d(64 * 4, 64 * 2, 4, 2, 1, bias=False) 
-	self.tbn3 = nn.BatchNorm2d(64 * 2) 
-	self.trelu3 = nn.ReLU(True) 
+        self.tconv3 = nn.ConvTranspose2d(64 * 4, 64 * 2, 4, 2, 1, bias=False) 
+        self.tbn3 = nn.BatchNorm2d(64 * 2) 
+        self.trelu3 = nn.ReLU(True) 
 
         # 64x64 to 128X128
-	self.tconv2 = nn.ConvTranspose2d(64 * 2,     64, 4, 2, 1, bias=False) 
-	self.tbn2 = nn.BatchNorm2d(64) 
-	self.trelu2 = nn.ReLU(True) 
+        self.tconv2 = nn.ConvTranspose2d(64 * 2,     64, 4, 2, 1, bias=False) 
+        self.tbn2 = nn.BatchNorm2d(64) 
+        self.trelu2 = nn.ReLU(True) 
 
         # 128x128 to 256X256
-	self.tconv1 = nn.ConvTranspose2d(    64,      1, 4, 2, 1, bias=False) 
+        self.tconv1 = nn.ConvTranspose2d(    64,      1, 4, 2, 1, bias=False) 
 
 
     def forward(self, input):
@@ -211,4 +211,4 @@ class Generator(nn.Module):
         tconv1 = self.tconv1(trelu2)
 
         # pdb.set_trace()
-        return torch.sigmoid( tconv1 ), [relu1, relu2, relu3, relu4, relu5], [trelu2, trelu3, trelu4, trelu5, trelu6] 
+        return torch.tanh( tconv1 ), [relu1, relu2, relu3, relu4, relu5], [trelu2, trelu3, trelu4, trelu5, trelu6] 
