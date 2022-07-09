@@ -38,7 +38,8 @@ import logging
 import sys
 
 SR = hparams['sample_rate']
-IMAGE_SIZE = 128 # Generate melspectrogram image in 128 x 128
+num_mels = hparams['num_mels']
+IMAGE_SIZE = 512 # Generate melspectrogram image in 128 x 128
 
 logging.getLogger('matplotlib.font_manager').disabled = True
 #%%
@@ -68,10 +69,20 @@ print(device)
 logging.info(device)
 # %%
 
-path_A = "data/AudioMNIST/male"
-path_B = "data/AudioMNIST/female"
+path_A = "../../../scratch/sram/CMU/A"
+path_B = "../../../scratch/sram/CMU/B"
 
-n = 5000
+n = 10000
+
+files_A = glob.glob(path_A+"/*.wav")[:n]
+files_B = glob.glob(path_B+"/*.wav")[:n]
+
+# %%
+
+if n > max(len(files_A), len(files_B)):
+    n = max(len(files_A), len(files_B))
+    
+print("n: ",str(n))
 
 # %%
 
@@ -81,8 +92,8 @@ def as_np(data):
 # %%
 
 # Image to npy array
-spect_dir_A = "./data/spectrograms/A/" 
-spect_dir_B = "./data/spectrograms/B/" 
+spect_dir_A = "../../../scratch/sram/CMU/A_spect"
+spect_dir_B = "../../../scratch/sram/CMU/B_spect"
 
 class TIMITDataset(Dataset):
     def __init__(self, img_dir, transform=None, target_transform=None):
@@ -116,13 +127,16 @@ print(data_A.__len__())
 print(data_B.__len__())
 
 # %%
+img = 10
 
-data_A.__getitem__(3)
+print(data_A.__getitem__(img).mean())
+print(data_A.__getitem__(img).var())
+print(data_A.__getitem__(img).shape)
 # %%
 
 # Create the dataloader
-batch_size = 64
-num_workers = 4
+batch_size = 8
+num_workers = 1
 
 data_A = torch.utils.data.DataLoader(data_A, 
                                      batch_size=batch_size, 
@@ -155,16 +169,20 @@ plt.imshow(grid_img.permute(1, 2, 0), origin="lower", cmap=plt.get_cmap("magma")
 
 n_batches = min( len(data_A), len(data_B) )
 
-# %%
+print(n_batches)
 
-recon_criterion = nn.L1Loss() #MSELoss()
-gan_criterion = nn.BCELoss()
+# %%
+recon_criterion = nn.MSELoss() #nn.L1Loss()
+gen_criterion = nn.BCELoss()
+dis_criterion = nn.BCELoss()
 feat_criterion = nn.HingeEmbeddingLoss()
 stl_criterion = nn.CrossEntropyLoss()
 # %%
 
 ## Change to 3 inputs 
-def get_gan_loss(dis_real, dis_fake1, dis_fake2, criterion, device):
+def get_gan_loss(dis_real, dis_fake1, dis_fake2, gen_criterion, dis_criterion, topk, device):
+    topk = int(topk)
+    
     labels_dis_real = Variable(torch.ones( [dis_real.size()[0], 1] ))
     labels_dis_fake1 = Variable(torch.zeros([dis_fake1.size()[0], 1] ))
     labels_dis_fake2 = Variable(torch.zeros([dis_fake2.size()[0], 1] ))
@@ -177,12 +195,12 @@ def get_gan_loss(dis_real, dis_fake1, dis_fake2, criterion, device):
     labels_gen1 = labels_gen1.to(device)
     labels_gen2 = labels_gen2.to(device)
     
-    dis_real = torch.reshape(dis_real, (batch_size,1))
-    dis_fake1 = torch.reshape(dis_fake1, (batch_size,1))
-    dis_fake2 = torch.reshape(dis_fake2, (batch_size,1))
+    dis_real = torch.reshape(dis_real, (topk,1))
+    dis_fake1 = torch.reshape(dis_fake1, (topk,1))
+    dis_fake2 = torch.reshape(dis_fake2, (topk,1))
     
-    dis_loss = criterion( dis_real, labels_dis_real ) * 0.4 + criterion( dis_fake1, labels_dis_fake1 ) * 0.3 + criterion( dis_fake2, labels_dis_fake2 ) * 0.3
-    gen_loss = criterion( dis_fake1, labels_gen1 ) * 0.5 + criterion( dis_fake2, labels_gen2 ) * 0.5
+    dis_loss = dis_criterion( dis_real, labels_dis_real ) * 0.4 + dis_criterion( dis_fake1, labels_dis_fake1 ) * 0.3 + dis_criterion( dis_fake2, labels_dis_fake2 ) * 0.3
+    gen_loss = gen_criterion( dis_fake1, labels_gen1 ) * 0.5 + gen_criterion( dis_fake2, labels_gen2 ) * 0.5
 
     return dis_loss, gen_loss
 # %%
@@ -249,7 +267,7 @@ def delta_regu(input_v, batch_size, criterion=nn.MSELoss()):
         input_temp = input_temp.cpu().numpy()
         input_delta = np.absolute(librosa.feature.delta(input_temp))
         b = input_delta.shape[1]
-        delta_loss = criterion(Variable((torch.from_numpy(input_delta)).type(torch.DoubleTensor)), Variable((torch.zeros([128,b])).type(torch.DoubleTensor)))
+        delta_loss = criterion(Variable((torch.from_numpy(input_delta)).type(torch.DoubleTensor)), Variable((torch.zeros([256,b])).type(torch.DoubleTensor)))
         # delta_loss = criterion((torch.from_numpy(input_delta)), Variable((torch.zeros([256,256]))))
         losses += delta_loss
 
@@ -284,18 +302,24 @@ dis_params = chain(discriminator_A.parameters(), discriminator_B.parameters())
 stl_params =  discriminator_S.parameters() 
 
 # %%
+learning_rate = 0.0002
+lr_decay = 0
 
-learning_rate = 0.01
+optim_gen = optim.AdamW( gen_params, lr=learning_rate, betas=(0.5,0.999))
+optim_dis = optim.AdamW( dis_params, lr=learning_rate, betas=(0.5,0.999))
+optim_stl = optim.AdamW( stl_params, lr=learning_rate, betas=(0.5,0.999))
 
-optim_gen = optim.Adam( gen_params, lr=learning_rate, betas=(0.5,0.999), weight_decay=0.00001)
-optim_dis = optim.Adam( dis_params, lr=learning_rate, betas=(0.5,0.999), weight_decay=0.00001)
-optim_stl = optim.Adam( stl_params, lr=learning_rate, betas=(0.5,0.999), weight_decay=0.00001)
+# LR decay
+if lr_decay == 1:
+    sched_gen = optim.lr_scheduler.ExponentialLR(optim_gen, gamma=0.99)
+    sched_dis = optim.lr_scheduler.ExponentialLR(optim_dis, gamma=0.99)
+    sched_stl = optim.lr_scheduler.ExponentialLR(optim_stl, gamma=0.99)
 
-iters = 0
-start = time.time()    
+start = time.time()      
+
 # %%
 
-def plot_grad_flow(named_parameters, filename):
+def plot_grad_flow(named_parameters, filename, path):
     '''Plots the gradients flowing through different layers in the net during training.
     Can be used for checking for possible gradient vanishing / exploding problems.
     
@@ -309,6 +333,7 @@ def plot_grad_flow(named_parameters, filename):
             layers.append(n)
             ave_grads.append(p.grad.cpu().abs().mean())
             max_grads.append(p.grad.cpu().abs().max())
+    plt.figure(figsize=(10,5))
     plt.bar(np.arange(len(max_grads)), max_grads, alpha=0.1, lw=1, color="c")
     plt.bar(np.arange(len(max_grads)), ave_grads, alpha=0.1, lw=1, color="b")
     plt.hlines(0, 0, len(ave_grads)+1, lw=2, color="k" )
@@ -322,11 +347,16 @@ def plot_grad_flow(named_parameters, filename):
     plt.legend([Line2D([0], [0], color="c", lw=4),
                 Line2D([0], [0], color="b", lw=4),
                 Line2D([0], [0], color="k", lw=4)], ['max-gradient', 'mean-gradient', 'zero-gradient'])
-    plt.savefig( os.path.join("results/gradients/", str( filename ) + ".jpg"))
-    
-#%%
+    plt.savefig( os.path.join(path, str( filename ) + ".jpg"))
+    plt.show()
+    plt.close()
 
-epoch_size = 2000
+# %%
+epoch_size = 1000
+
+topk = batch_size
+gamma = 0.99
+v = topk*0.5
 
 # Strong GAN loss for certain period at the beginning
 gan_curriculum = 1000
@@ -336,23 +366,37 @@ starting_rate = 0.01
 default_rate = 0.5
 # choose among gan/recongan/discogan/spec_gan. gan - standard GAN, recongan - GAN with reconstruction, discogan - DiscoGAN, spec_gan - My modified GAN model for speech
 model_arch = "spec_gan"
-# Print loss values every log_interval iterations
-log_interval = epoch_size
+# Print loss values every log_interval iterations. The current code ensures that the logs are updated 10 times every epoch
+log_interval = int(n_batches/10)
 # Save test results every image_save_interval iterations
 image_save_interval = 2000
 # Save models every model_save_interval iterations
 model_save_interval = 10000
 # Set the path for trained models
-model_path = "./models/"
-task_name = "spectrogram"
+task_name = "impersonation"
 
+update_interval = 10
+
+results_folder_name = "CMU_Adam_lr"+str(learning_rate)+"_lr_decay"+str(lr_decay)+"_starting_rate"+str(starting_rate)+"_default_rate"+str(default_rate)
+
+path = "./results/"+results_folder_name
+isExist = os.path.exists(path)
+
+if not isExist:
+    os.makedirs(path)
+    os.makedirs(path+"/images")
+    os.makedirs(path+"/gradients")
+    os.makedirs(path+"/models")
+    print("The new directories are created!")
+
+model_path = path+"/models/"
+images_path = path+"/images/"
+gradients_path = path+"/gradients/"
+    
 model_path = os.path.join( model_path, task_name )
 model_path = os.path.join( model_path, model_arch )
 
 Path(model_path).mkdir(parents=True, exist_ok=True)
-
-result_path = './results'
-update_interval = 10
 
 log_gen_loss = np.array([])
 log_dis_loss = np.array([])
@@ -369,14 +413,20 @@ img_list = []
 
 plt.figure(figsize=(10, 15))
 
-for epoch in range(epoch_size):    
+for epoch in range(epoch_size):
+    print("k:", topk)
+    print("v:", v)
+    print("gamma:", gamma)
+    topk = max(gamma*topk,v)
+    
     epoch_stats = defaultdict(lambda: 0)
     widgets = ['epoch #%d|' % epoch, Percentage(), Bar(), ETA()]
     pbar = ProgressBar(maxval=n_batches, widgets=widgets)
     pbar.start()
         
-    for i, (A,B) in enumerate(zip(data_A,data_B)):
-        pbar.update(i)
+    for iters, (A,B) in enumerate(zip(data_A,data_B)):
+        
+        pbar.update(iters)
 
         generator_A.zero_grad()
         generator_B.zero_grad()
@@ -386,9 +436,6 @@ for epoch in range(epoch_size):
            
         A = Variable( torch.FloatTensor( A ) ).to(device)
         B = Variable( torch.FloatTensor( B ) ).to(device)
-
-        # test_A_V = Variable( torch.FloatTensor( t_A ), requires_grad=True )
-        # test_B_V = Variable( torch.FloatTensor( t_B ), requires_grad=True )
     
         # A -> AB -> ABA
         # A = A.unsqueeze(1)
@@ -411,9 +458,14 @@ for epoch in range(epoch_size):
         A_dis = discriminator_A( A )
         BA_dis = discriminator_A( BA )
         ABA_dis = discriminator_A( ABA )
+            
+        # New part based on Top-k Training of GANs: Improving GAN Performance by Throwing Away Bad Samples
+        A_dis = torch.topk(A_dis , int(topk), dim=0)[0]
+        BA_dis = torch.topk(BA_dis , int(topk), dim=0)[0]
+        ABA_dis = torch.topk(ABA_dis , int(topk), dim=0)[0]
         
         # will be strange in one epoch
-        dis_loss_A, gen_loss_A = get_gan_loss( A_dis, BA_dis, ABA_dis, gan_criterion, device)
+        dis_loss_A, gen_loss_A = get_gan_loss( A_dis, BA_dis, ABA_dis, gen_criterion, dis_criterion, topk, device)
                 
         fm_loss_A1 = get_fm_loss(AL_feats, ABLA_feats, feat_criterion, device)
         fm_loss_A2 = get_fm_loss(LAB_feats, ABL_feats, feat_criterion, device)
@@ -423,8 +475,13 @@ for epoch in range(epoch_size):
         B_dis = discriminator_B( B )
         AB_dis = discriminator_B( AB )
         BAB_dis = discriminator_B( BAB )
+        
+        # New part based on Top-k Training of GANs: Improving GAN Performance by Throwing Away Bad Samples
+        B_dis = torch.topk(B_dis , int(topk), dim=0)[0]
+        AB_dis = torch.topk(AB_dis , int(topk), dim=0)[0]
+        BAB_dis = torch.topk(BAB_dis , int(topk), dim=0)[0]
 
-        dis_loss_B, gen_loss_B = get_gan_loss( B_dis, AB_dis, BAB_dis, gan_criterion, device)
+        dis_loss_B, gen_loss_B = get_gan_loss( B_dis, AB_dis, BAB_dis, gen_criterion, dis_criterion, topk, device)
         fm_loss_B1 = get_fm_loss( BL_feats, BALB_feats, feat_criterion, device)
         fm_loss_B2 = get_fm_loss( LBA_feats, BAL_feats, feat_criterion, device)
         fm_loss_B = fm_loss_B1 + fm_loss_B2
@@ -475,16 +532,21 @@ for epoch in range(epoch_size):
             optim_dis.step()
             optim_stl.step()
             
-            # sched_dis.step()
-            # sched_stl.step()
+            # LR decay
+            if lr_decay == 1:
+                sched_dis.step()
+                sched_stl.step()
+                
         else:
             gen_loss.backward()
             optim_gen.step()
             
-            # sched_gen.step()
+            # LR decay
+            if lr_decay == 1:
+                sched_gen.step()
             
-        if i % 50 == 0:
-        # if iters % log_interval == 0:
+        # if iters % 50 == 0: # Update every 50 batches
+        if iters % log_interval == 0:
             print("---------------------")
             print("GEN Loss:", as_np(gen_loss_A.mean()), as_np(gen_loss_B.mean()))
             print("Feature Matching Loss:", as_np(fm_loss_A.mean()), as_np(fm_loss_B.mean()))
@@ -515,56 +577,44 @@ for epoch in range(epoch_size):
             torch.save( discriminator_A, os.path.join(model_path, 'model_dis_A-' + str( iters / model_save_interval )))
             torch.save( discriminator_B, os.path.join(model_path, 'model_dis_B-' + str( iters / model_save_interval )))
                     
-        if epoch % 5 == 0 and iters % 10 == 0:
+        if epoch % 5 == 0 and iters % log_interval == 0:
             print('Epoch: '+str(epoch))
-            for k, v in epoch_stats.items():
-                print(' %s=%6.4f' % (k, v[-1] / iters), end='')
+            for key, val in epoch_stats.items():
+                print(' %s=%6.4f' % (key, val[-1] / iters), end='')
 
             images_for_plot = {
                 'real_a': A, 'fake_ab': AB, 'cycle_aba': ABA,
                 'real_b': B, 'fake_ba': BA, 'cycle_bab': BAB,
             }
 
-            for k in range(3):
+            for z in range(3):
                 for i, (im_title, im) in enumerate(images_for_plot.items()):
-                    plt.subplot(3, 6, k * 6 + i + 1)
-                    plt.imshow(im[k].detach().cpu().numpy().transpose(1, 2, 0) / 2 + 0.5)
-                    if k == 0:
+                    plt.subplot(3, 6, z * 6 + i + 1)
+                    plt.imshow(im[z].detach().cpu().numpy().transpose(1, 2, 0) / 2 + 0.5)
+                    if z == 0:
                         plt.title(im_title)
                     plt.axis('off')
                     
             plt.tight_layout()
             display(plt.gcf())
             clear_output(wait=True)
-            plt.savefig( os.path.join("results/images/", 'model-' + str( epoch ) + ".jpg"))
+            plt.savefig( os.path.join(images_path, 'model-' + str( epoch ) + ".jpg"))
             
             plt.figure(figsize=(10,5))
             plt.title("Generator, Discriminator and StyleDiscriminator Loss During Training")
-            plt.plot(log_gen_loss,label="G")
-            plt.plot(log_dis_loss,label="D")
-            plt.plot(log_stl_loss,label="S")
-            plt.xlabel("iterations")
+            plt.plot(log_gen_loss,label="Generator", color="m")
+            plt.plot(log_dis_loss,label="Discriminator", color="c")
+            plt.plot(log_stl_loss,label="StyleDiscriminator", color="r")
+            plt.xlabel("Iterations")
             plt.ylabel("Loss")
             plt.legend()
-            plt.savefig( os.path.join("results/", 'model-' + str( epoch ) + ".jpg"))
+            plt.savefig( os.path.join(path, 'model-' + str( epoch ) + ".jpg"))
             plt.show()
             
-            plot_grad_flow(discriminator_A.named_parameters(), 'discriminator_A')
-            plot_grad_flow(discriminator_B.named_parameters(), 'discriminator_B')
-            plot_grad_flow(discriminator_S.named_parameters(), 'discriminator_S')
-            plot_grad_flow(generator_A.named_parameters(), 'generator_A')
-            plot_grad_flow(generator_B.named_parameters(), 'generator_B')
+            plot_grad_flow(discriminator_A.named_parameters(), 'discriminator_A-' + str( epoch ), gradients_path)
+            plot_grad_flow(discriminator_B.named_parameters(), 'discriminator_B-' + str( epoch ), gradients_path)
+            plot_grad_flow(discriminator_S.named_parameters(), 'discriminator_S-' + str( epoch ), gradients_path)
+            plot_grad_flow(generator_A.named_parameters(), 'generator_A-' + str( epoch ), gradients_path)
+            plot_grad_flow(generator_B.named_parameters(), 'generator_B-' + str( epoch ), gradients_path)
     
-        iters += 1
-        
-sio.savemat(result_path +'/log_gen_loss.mat', {'log_gen_loss':log_gen_loss})
-sio.savemat(result_path +'/log_dis_loss.mat', {'log_dis_loss':log_dis_loss})
-sio.savemat(result_path +'/log_stl_loss.mat', {'log_stl_loss':log_stl_loss})
-sio.savemat(result_path +'/log_delta_A.mat', {'log_delta_A':log_delta_A})
-sio.savemat(result_path +'/log_delta_B.mat', {'log_delta_B':log_delta_B})
-sio.savemat(result_path +'/log_gen_loss_A.mat', {'log_gen_loss_A':log_gen_loss_A})
-sio.savemat(result_path +'/log_gen_loss_B.mat', {'log_gen_loss_B':log_gen_loss_B})
-sio.savemat(result_path +'/log_fm_loss_A.mat', {'log_fm_loss_A':log_fm_loss_A}) 
-sio.savemat(result_path +'/log_fm_loss_B.mat', {'log_fm_loss_B':log_fm_loss_B})
-sio.savemat(result_path +'/log_recon_loss_A.mat', {'log_recon_loss_A':log_recon_loss_A}) 
-sio.savemat(result_path +'/log_recon_loss_B.mat', {'log_recon_loss_B':log_recon_loss_B})
+        plt.close()

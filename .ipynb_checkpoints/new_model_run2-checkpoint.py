@@ -116,7 +116,7 @@ def get_gan_loss(dis_real, dis_fake1, dis_fake2, criterion, cuda):
         labels_dis_fake1 = labels_dis_fake1.cuda()
      	labels_dis_fake2 = labels_dis_fake2.cuda()
         labels_gen1 = labels_gen1.cuda()
-	labels_gen2 = labels_gen2.cuda()
+        labels_gen2 = labels_gen2.cuda()
 
     dis_loss = criterion( dis_real, labels_dis_real ) * 0.4 + criterion( dis_fake1, labels_dis_fake1 ) * 0.3 + criterion( dis_fake2, labels_dis_fake2 ) * 0.3
     gen_loss = criterion( dis_fake1, labels_gen1 ) * 0.5 + criterion( dis_fake2, labels_gen2 ) * 0.5
@@ -359,7 +359,7 @@ def main():
             # Real/Fake GAN Loss (A)
             A_dis = discriminator_A( A )
             BA_dis = discriminator_A( BA )
-            ABA_dis = discriminator_A( ABA )
+            ABA_dis = discrimincudaator_A( ABA )
             # will be strange in one epoch
             dis_loss_A, gen_loss_A = get_gan_loss( A_dis, BA_dis, ABA_dis, gan_criterion, cuda )
             # pdb.set_trace()

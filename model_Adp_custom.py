@@ -41,10 +41,13 @@ class StyleDiscriminator(nn.Module):
                     nn.BatchNorm2d(64 * 4),
                     nn.LeakyReLU(0.2, inplace=True),
 
-                    nn.AdaptiveMaxPool2d(1),
-                    nn.Conv2d(256,64,kernel_size=(1,1)),
-                    nn.Conv2d(64,2,kernel_size=(1,1))
+                    nn.Conv2d(64 * 4, 64 * 8, 4, 2, 1, bias=False),
+                    nn.BatchNorm2d(64 * 8),
+                    nn.LeakyReLU(0.2, inplace=True),
 
+                    nn.AdaptiveMaxPool2d(1),
+                    nn.Conv2d(512,64,kernel_size=(1,1)),
+                    nn.Conv2d(64,2,kernel_size=(1,1))
                     )
 
     def forward(self, input):
@@ -75,8 +78,12 @@ class Discriminator(nn.Module):
                     nn.BatchNorm2d(64 * 4),
                     nn.LeakyReLU(0.2, inplace=True),
 
+                    nn.Conv2d(64 * 4, 64 * 8, 4, 2, 1, bias=False),
+                    nn.BatchNorm2d(64 * 8),
+                    nn.LeakyReLU(0.2, inplace=True),
+
                     nn.AdaptiveMaxPool2d(1),
-                    nn.Conv2d(256,64,kernel_size=(1,1)),
+                    nn.Conv2d(512,64,kernel_size=(1,1)),
                     nn.Conv2d(64,8,kernel_size=(1,1)),
                     nn.Conv2d(8,1,kernel_size=(1,1)),
                     nn.Sigmoid()
@@ -94,53 +101,63 @@ class Generator(nn.Module):
 
         super(Generator, self).__init__()
         self.num_gpu = num_gpu
-
-        # 128x128 to 64x64
+               
+        # Input 256X256 (DEFAULT) to 128x128
         self.conv1 = nn.Conv2d(1, 64, 4, 2, 1, bias=False)
         self.relu1 = nn.LeakyReLU(0.2, inplace=True)
 
-        # 64x64 to 32x32
+        # 128x128 to 64x64
         self.conv2 = nn.Conv2d(64, 64 * 2, 4, 2, 1, bias=False)
         self.bn2 = nn.BatchNorm2d(64 * 2)
         self.relu2 = nn.LeakyReLU(0.2, inplace=True)
 
-        # 32x32 to 16x16
+        # 64x64 to 32x32
         self.conv3 = nn.Conv2d(64 * 2, 64 * 4, 4, 2, 1, bias=False)
         self.bn3 = nn.BatchNorm2d(64 * 4)
         self.relu3 = nn.LeakyReLU(0.2, inplace=True)
 
-        # 16x16 to 8x8
-        self.conv4 = nn.Conv2d(64 * 4, 64 * 4, 4, 2, 1, bias=False)
-        self.bn4 = nn.BatchNorm2d(64 * 4)
+        # 32x32 to 16x16
+        self.conv4 = nn.Conv2d(64 * 4, 64 * 8, 4, 2, 1, bias=False)
+        self.bn4 = nn.BatchNorm2d(64 * 8)
         self.relu4 = nn.LeakyReLU(0.2, inplace=True)
+
+        # 16x16 to 8x8
+        self.conv5 = nn.Conv2d(64 * 8, 64 * 8, 4, 2, 1, bias=False)
+        self.bn5 = nn.BatchNorm2d(64 * 8)
+        self.relu5 = nn.LeakyReLU(0.2, inplace=True)
 
 
         # Varied length feature inside (8x8 to 4x4)
-        self.conv5 = nn.Conv2d(64 * 4, 64 * 4, 4, 2, 1, bias=False)
-        self.bn5 = nn.BatchNorm2d(64 * 4)
-        self.relu5 = nn.LeakyReLU(0.2, inplace=True)
+        self.conv6 = nn.Conv2d(64 * 8, 64 * 8, 4, 2, 1, bias=False)
+        self.bn6 = nn.BatchNorm2d(64 * 8)
+        self.relu6 = nn.LeakyReLU(0.2, inplace=True)
 
         # 4x4 to 8x8
-        self.tconv5 = nn.ConvTranspose2d(64 * 4, 64 * 4, 4, 2, 1, bias=False) 
-        self.tbn5 = nn.BatchNorm2d(64 * 4) 
-        self.trelu5 = nn.ReLU(True) 
+        self.tconv6 = nn.ConvTranspose2d(64 * 8, 64 * 8, 4, 2, 1, bias=False) 
+        self.tbn6 = nn.BatchNorm2d(64 * 8) 
+        self.trelu6 = nn.ReLU(True) 
 
         # 8x8 to 16x16
-        self.tconv4 = nn.ConvTranspose2d(64 * 4, 64 * 4, 4, 2, 1, bias=False) 
+        self.tconv5 = nn.ConvTranspose2d(64 * 8, 64 * 8, 4, 2, 1, bias=False) 
+        self.tbn5 = nn.BatchNorm2d(64 * 8) 
+        self.trelu5 = nn.ReLU(True) 
+
+        # 16x16 to 32x32
+        self.tconv4 = nn.ConvTranspose2d(64 * 8, 64 * 4, 4, 2, 1, bias=False) 
         self.tbn4 = nn.BatchNorm2d(64 * 4) 
         self.trelu4 = nn.ReLU(True) 
 
-        # 16x16 to 32x32
+        # 32x32 to 64X64
         self.tconv3 = nn.ConvTranspose2d(64 * 4, 64 * 2, 4, 2, 1, bias=False) 
         self.tbn3 = nn.BatchNorm2d(64 * 2) 
         self.trelu3 = nn.ReLU(True) 
 
-        # 32x32 to 64X64
+        # 64x64 to 128X128
         self.tconv2 = nn.ConvTranspose2d(64 * 2,     64, 4, 2, 1, bias=False) 
         self.tbn2 = nn.BatchNorm2d(64) 
         self.trelu2 = nn.ReLU(True) 
 
-        # 64x64 to 128X128
+        # 128x128 to 256X256
         self.tconv1 = nn.ConvTranspose2d(    64,      1, 4, 2, 1, bias=False) 
 
 
@@ -164,9 +181,17 @@ class Generator(nn.Module):
         bn5 = self.bn5( conv5 )
         relu5 = self.relu5( bn5 )
 
-        ## Transposed CNN
+        conv6 = self.conv6( relu5 )
+        bn6 = self.bn6( conv6 )
+        relu6 = self.relu6( bn6 )
 
-        tconv5 = self.tconv5(relu5)
+        ## Transposed CNN
+ 
+        tconv6 = self.tconv6(relu6)
+        tbn6 = self.tbn6( tconv6 )
+        trelu6 = self.trelu6(tbn6)
+
+        tconv5 = self.tconv5(trelu6)
         tbn5 = self.tbn5(tconv5) 
         trelu5 = self.trelu5(tbn5) 
 
@@ -185,5 +210,4 @@ class Generator(nn.Module):
         tconv1 = self.tconv1(trelu2)
 
         # pdb.set_trace()
-        return torch.tanh( tconv1 ), [relu1, relu2, relu3, relu4, relu5], [trelu2, trelu3, trelu4, trelu5] 
-        
+        return torch.tanh( tconv1 ), [relu1, relu2, relu3, relu4, relu5], [trelu2, trelu3, trelu4, trelu5, trelu6] 

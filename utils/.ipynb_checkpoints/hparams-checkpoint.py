@@ -2,7 +2,7 @@ from hparams import HParams
 
 # Default hyperparameters:
 hparams = HParams(
-    num_mels=128,
+    num_mels=256,
     num_freq=1013,
     sample_rate=16000,
     frame_length_ms=16.0,
